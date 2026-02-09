@@ -2,11 +2,12 @@ import mongoose from 'mongoose';
 
 const MemberSchema = new mongoose.Schema(
   {
-    // Auto-generated Member ID
+    // Member ID - REQUIRED INPUT from user
     memberId: {
       type: String,
+      required: [true, 'Member ID is required'],
       unique: true,
-      required: true,
+      trim: true,
     },
     gym: {
       type: mongoose.Schema.Types.ObjectId,
@@ -135,22 +136,15 @@ MemberSchema.index({ gym: 1, membershipStatus: 1 });
 MemberSchema.index({ gym: 1, membershipEndDate: 1 });
 MemberSchema.index({ gym: 1, dateOfBirth: 1 });
 MemberSchema.index({ memberId: 1 }, { unique: true });
+MemberSchema.index({ gym: 1, isActive: 1 });
 
-// Pre-save hook to generate Member ID if not present
-MemberSchema.pre('save', async function (next) {
-  if (!this.memberId) {
-    // Generate unique member ID: M000001 format
-    const count = await mongoose.models.Member.countDocuments({ gym: this.gym });
-    this.memberId = `M${String(count + 1).padStart(6, '0')}`;
-  }
-  
+// Pre-save hook for calculations (NO NEXT() NEEDED)
+MemberSchema.pre('save', function() {
   // Calculate final price and due amount
   if (this.planPrice !== undefined && this.discount !== undefined) {
     this.finalPrice = this.planPrice - this.discount;
     this.dueAmount = this.finalPrice - (this.amountPaid || 0);
   }
-  
-  next();
 });
 
 export default mongoose.models.Member || mongoose.model('Member', MemberSchema);

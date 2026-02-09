@@ -1,30 +1,19 @@
-/**
- * Calculate membership end date based on start date and duration
- */
-export function calculateEndDate(startDate, duration, unit) {
-  const date = new Date(startDate);
-  
-  switch (unit) {
-    case 'days':
-      date.setDate(date.getDate() + duration);
-      break;
-    case 'months':
-      date.setMonth(date.getMonth() + duration);
-      break;
-    case 'years':
-      date.setFullYear(date.getFullYear() + duration);
-      break;
-    default:
-      throw new Error('Invalid duration unit');
+// Calculate end date based on start date and duration in days
+export function calculateEndDate(startDate, durationInDays) {
+  if (!startDate || !durationInDays) {
+    throw new Error('Start date and duration are required');
   }
-  
-  return date;
+
+  const start = new Date(startDate);
+  const end = new Date(start);
+  end.setDate(end.getDate() + parseInt(durationInDays));
+  return end;
 }
 
-/**
- * Calculate days remaining until expiry
- */
+// Get remaining days from end date
 export function getDaysRemaining(endDate) {
+  if (!endDate) return null;
+  
   const now = new Date();
   const end = new Date(endDate);
   const diffTime = end - now;
@@ -32,10 +21,10 @@ export function getDaysRemaining(endDate) {
   return diffDays;
 }
 
-/**
- * Check if membership is expiring today
- */
+// Check if membership is expiring today
 export function isExpiringToday(endDate) {
+  if (!endDate) return false;
+  
   const today = new Date();
   const end = new Date(endDate);
   
@@ -46,17 +35,13 @@ export function isExpiringToday(endDate) {
   );
 }
 
-/**
- * Check if membership is expiring soon (within days)
- */
-export function isExpiringSoon(endDate, withinDays = 7) {
-  const daysRemaining = getDaysRemaining(endDate);
-  return daysRemaining > 0 && daysRemaining <= withinDays;
+// Check if membership is expiring soon (within specified days)
+export function isExpiringSoon(endDate, days = 7) {
+  const daysLeft = getDaysRemaining(endDate);
+  return daysLeft !== null && daysLeft > 0 && daysLeft <= days;
 }
 
-/**
- * Check if today is member's birthday
- */
+// Check if today is member's birthday
 export function isBirthdayToday(dateOfBirth) {
   if (!dateOfBirth) return false;
   
@@ -69,42 +54,62 @@ export function isBirthdayToday(dateOfBirth) {
   );
 }
 
-/**
- * Format date to YYYY-MM-DD
- */
-export function formatDate(date) {
+// Format date to readable string
+export function formatDate(date, format = 'short') {
+  if (!date) return 'N/A';
+  
   const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  
+  if (format === 'short') {
+    return d.toLocaleDateString('en-IN');
+  } else if (format === 'long') {
+    return d.toLocaleDateString('en-IN', { 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  }
+  
+  return d.toLocaleDateString('en-IN');
 }
 
-/**
- * Get date range for today
- */
+// Get today's date range (start and end of day)
 export function getTodayDateRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
   
-  return { start, end };
+  return { start: today, end: tomorrow };
 }
 
-/**
- * Convert duration to days
- */
+// Convert duration to days
 export function convertToDays(value, unit) {
-  switch (unit) {
+  const numValue = parseInt(value);
+  
+  if (isNaN(numValue) || numValue <= 0) {
+    throw new Error('Invalid duration value');
+  }
+
+  switch (unit.toLowerCase()) {
+    case 'day':
     case 'days':
-      return value;
+      return numValue;
+    
+    case 'week':
+    case 'weeks':
+      return numValue * 7;
+    
+    case 'month':
     case 'months':
-      return value * 30; // Approximate
+      return numValue * 30; // Approximate
+    
+    case 'year':
     case 'years':
-      return value * 365; // Approximate
+      return numValue * 365; // Approximate
+    
     default:
-      return 0;
+      throw new Error(`Invalid duration unit: ${unit}. Use 'days', 'months', or 'years'`);
   }
 }

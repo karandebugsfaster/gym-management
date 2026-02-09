@@ -19,7 +19,11 @@ const MembershipHistorySchema = new mongoose.Schema(
     },
     planName: {
       type: String,
-      required: true,
+      default: '',
+    },
+    planPrice: {
+      type: Number,
+      default: 0,
     },
     startDate: {
       type: Date,
@@ -29,9 +33,14 @@ const MembershipHistorySchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
-    planPrice: {
+    renewalType: {
+      type: String,
+      enum: ['new', 'renewal', 'upgrade', 'downgrade'],
+      default: 'new',
+    },
+    amountPaid: {
       type: Number,
-      required: true,
+      default: 0,
     },
     discount: {
       type: Number,
@@ -39,36 +48,12 @@ const MembershipHistorySchema = new mongoose.Schema(
     },
     finalPrice: {
       type: Number,
-      required: true,
-    },
-    amountPaid: {
-      type: Number,
-      default: 0,
-    },
-    dueAmount: {
-      type: Number,
       default: 0,
     },
     paymentMode: {
       type: String,
       enum: ['cash', 'online', 'card', 'upi'],
       default: 'cash',
-    },
-    renewalType: {
-      type: String,
-      enum: ['new', 'renewal', 'early_renewal'],
-      default: 'new',
-    },
-    // Reference to transaction
-    transaction: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Transaction',
-      default: null,
-    },
-    processedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null,
     },
     isActive: {
       type: Boolean,
@@ -81,7 +66,16 @@ const MembershipHistorySchema = new mongoose.Schema(
 );
 
 // Indexes for performance
-MembershipHistorySchema.index({ member: 1, createdAt: -1 });
-MembershipHistorySchema.index({ gym: 1, isActive: 1 });
+MembershipHistorySchema.index({ gym: 1, member: 1 });
+MembershipHistorySchema.index({ gym: 1, startDate: -1 });
+MembershipHistorySchema.index({ member: 1, startDate: -1 });
+
+// Pre-save hook to calculate finalPrice if not provided
+MembershipHistorySchema.pre('save', function() {
+  // Calculate final price if not already set
+  if (!this.finalPrice || this.finalPrice === 0) {
+    this.finalPrice = (this.planPrice || 0) - (this.discount || 0);
+  }
+});
 
 export default mongoose.models.MembershipHistory || mongoose.model('MembershipHistory', MembershipHistorySchema);

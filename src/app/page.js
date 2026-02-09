@@ -1,16 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/context/AuthContext'
 import { motion } from 'framer-motion'
 
 export default function AuthPage() {
   const router = useRouter()
+  const { user, loading: authLoading, login } = useAuth()
   const [isSignUp, setIsSignUp] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Sign Up State
   const [signUpData, setSignUpData] = useState({
     name: '',
     email: '',
@@ -19,13 +20,31 @@ export default function AuthPage() {
     phoneNumber: '',
   })
 
-  // Sign In State
   const [signInData, setSignInData] = useState({
     email: '',
     password: '',
   })
 
-  // Handle Sign Up
+  useEffect(() => {
+    if (!authLoading && user) {
+      if (user.ownedGyms?.length > 0 || user.managedGyms?.length > 0) {
+        router.push('/dashboard')
+      } else {
+        router.push('/gym-info')
+      }
+    }
+  }, [user, authLoading, router])
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    )
+  }
+
+  if (user) return null
+
   const handleSignUp = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -41,11 +60,7 @@ export default function AuthPage() {
       const data = await res.json()
 
       if (data.success) {
-        // Save token to localStorage
-        localStorage.setItem('token', data.token)
-        localStorage.setItem('user', JSON.stringify(data.user))
-        
-        // Redirect to gym info page
+        login(data.token, data.user)
         router.push('/gym-info')
       } else {
         setError(data.message)
@@ -57,7 +72,6 @@ export default function AuthPage() {
     }
   }
 
-  // Handle Sign In
   const handleSignIn = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -73,11 +87,8 @@ export default function AuthPage() {
       const data = await res.json()
 
       if (data.success) {
-        // Save token to localStorage
-        localStorage.setItem('token', data.token)
-        localStorage.setItem('user', JSON.stringify(data.user))
+        login(data.token, data.user)
         
-        // Check if user has gyms
         if (data.user.ownedGyms?.length > 0 || data.user.managedGyms?.length > 0) {
           router.push('/dashboard')
         } else {
@@ -94,21 +105,21 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        {/* Card - Mobile optimized padding */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
           {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
               {isSignUp ? 'Create Account' : 'Welcome Back'}
             </h1>
-            <p className="text-gray-600">
+            <p className="text-sm sm:text-base text-gray-600">
               {isSignUp ? 'Start managing your gym today' : 'Sign in to continue'}
             </p>
           </div>
@@ -126,75 +137,65 @@ export default function AuthPage() {
 
           {/* Sign Up Form */}
           {isSignUp ? (
-            <form onSubmit={handleSignUp} className="space-y-4">
+            <form onSubmit={handleSignUp} className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Name</label>
                 <input
                   type="text"
                   required
                   value={signUpData.name}
                   onChange={(e) => setSignUpData({ ...signUpData, name: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-black"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                   placeholder="Enter your name"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
                 <input
                   type="email"
                   required
                   value={signUpData.email}
                   onChange={(e) => setSignUpData({ ...signUpData, email: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-black"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                   placeholder="your@email.com"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Code
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Code</label>
                   <input
                     type="text"
                     required
                     value={signUpData.dialCode}
                     onChange={(e) => setSignUpData({ ...signUpData, dialCode: e.target.value })}
-                    className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-black"
+                    className="w-full px-2 sm:px-3 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                     placeholder="91"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone Number
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone</label>
                   <input
                     type="tel"
                     required
                     value={signUpData.phoneNumber}
                     onChange={(e) => setSignUpData({ ...signUpData, phoneNumber: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-black"
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                     placeholder="9876543210"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
                 <input
                   type="password"
                   required
                   minLength={6}
                   value={signUpData.password}
                   onChange={(e) => setSignUpData({ ...signUpData, password: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-black"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                   placeholder="Min. 6 characters"
                 />
               </div>
@@ -202,7 +203,7 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg text-base mt-2"
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
@@ -218,32 +219,27 @@ export default function AuthPage() {
               </button>
             </form>
           ) : (
-            // Sign In Form
-            <form onSubmit={handleSignIn} className="space-y-4">
+            <form onSubmit={handleSignIn} className="space-y-3 sm:space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
                 <input
                   type="email"
                   required
                   value={signInData.email}
                   onChange={(e) => setSignInData({ ...signInData, email: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                   placeholder="your@email.com"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
                 <input
                   type="password"
                   required
                   value={signInData.password}
                   onChange={(e) => setSignInData({ ...signInData, password: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-base"
                   placeholder="Enter your password"
                 />
               </div>
@@ -251,7 +247,7 @@ export default function AuthPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg text-base mt-2"
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
@@ -269,8 +265,8 @@ export default function AuthPage() {
           )}
 
           {/* Toggle Sign Up / Sign In */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-600">
+          <div className="mt-5 sm:mt-6 text-center">
+            <p className="text-sm sm:text-base text-gray-600">
               {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
               <button
                 type="button"

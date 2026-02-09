@@ -1,28 +1,101 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
+import { verifyAuth } from '@/lib/middleware';
 import Member from '@/models/Member';
 import Plan from '@/models/Plan';
-import Gym from '@/models/Gym';
 import Transaction from '@/models/Transaction';
 import MembershipHistory from '@/models/MembershipHistory';
-import { verifyAuth } from '@/lib/middleware';
 import { calculateEndDate } from '@/lib/utils';
 
-export async function POST(request) {
+// GET - Fetch members
+export async function GET(req) {
   try {
-    await dbConnect();
-
-    const { authenticated, user, error } = await verifyAuth(request);
-    if (!authenticated) {
+    const authResult = await verifyAuth(req);
+    if (!authResult.authenticated) {
       return NextResponse.json(
-        { success: false, message: error || 'Unauthorized' },
+        { success: false, message: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const body = await request.json();
+    const { searchParams } = new URL(req.url);
+    const gymId = searchParams.get('gymId');
+    const status = searchParams.get('status');
+    const batch = searchParams.get('batch');
+    const page = parseInt(searchParams.get('page')) || 1;
+    const limit = parseInt(searchParams.get('limit')) || 50;
+    const skip = (page - 1) * limit;
+
+    if (!gymId) {
+      return NextResponse.json(
+        { success: false, message: 'Gym ID is required' },
+        { status: 400 }
+      );
+    }
+
+    await dbConnect();
+
+    const query = { gym: gymId, isActive: true };
+    
+    if (status === 'active') {
+      query.membershipStatus = 'active';
+    } else if (status === 'expired') {
+      query.membershipStatus = 'expired';
+    }
+    
+    if (batch) {
+      query.batch = batch;
+    }
+
+    // Parallel queries for total count and paginated data
+    const [members, totalCount] = await Promise.all([
+      Member.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('currentPlan', 'name price duration')
+        .select('-__v')
+        .lean(),
+      Member.countDocuments(query),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      members,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasMore: skip + members.length < totalCount,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching members:', error);
+    return NextResponse.json(
+      { success: false, message: 'Server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - Create new member
+export async function POST(req) {
+  try {
+    const authResult = await verifyAuth(req);
+    if (!authResult.authenticated) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+    
+    // Destructure ALL fields from body
     const {
       gymId,
+      memberId,
       name,
       phoneNumber,
       gender,
@@ -42,65 +115,69 @@ export async function POST(request) {
       sendInvoice,
     } = body;
 
-    // Validation
-    if (!gymId || !name || !phoneNumber || !gender || !batch || !joiningDate) {
+    // Validation - Check required fields
+    if (
+      !gymId ||
+      !memberId ||
+      !name ||
+      !phoneNumber ||
+      !gender ||
+      !batch ||
+      !joiningDate
+    ) {
       return NextResponse.json(
-        { success: false, message: 'Required fields are missing' },
+        { 
+          success: false, 
+          message: 'Required fields are missing. Please provide: gymId, memberId, name, phoneNumber, gender, batch, and joiningDate' 
+        },
         { status: 400 }
       );
     }
 
-    // Verify gym access
-    const gym = await Gym.findById(gymId);
-    if (!gym) {
+    await dbConnect();
+
+    // Check if memberId already exists in this gym
+    const existingMember = await Member.findOne({ memberId, gym: gymId });
+    if (existingMember) {
       return NextResponse.json(
-        { success: false, message: 'Gym not found' },
-        { status: 404 }
+        { success: false, message: 'Member ID already exists in this gym. Please use a different ID.' },
+        { status: 400 }
       );
     }
 
-    const hasAccess =
-      gym.owner.toString() === user._id.toString() ||
-      gym.managers.some((m) => m.toString() === user._id.toString());
-
-    if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, message: 'Access denied' },
-        { status: 403 }
-      );
-    }
-
-    // Get plan details if plan is selected
-    let plan = null;
+    // If plan is assigned, fetch plan details
+    let planDetails = null;
     let membershipStartDate = null;
     let membershipEndDate = null;
-    let planPrice = 0;
     let finalPrice = 0;
     let dueAmount = 0;
 
     if (planId) {
-      plan = await Plan.findById(planId);
-      if (!plan) {
+      planDetails = await Plan.findById(planId);
+      
+      if (!planDetails) {
         return NextResponse.json(
           { success: false, message: 'Plan not found' },
           { status: 404 }
         );
       }
 
+      // Calculate membership dates
       membershipStartDate = new Date(joiningDate);
-      membershipEndDate = calculateEndDate(
-        membershipStartDate,
-        plan.duration.value,
-        plan.duration.unit
-      );
-      planPrice = plan.price;
-      finalPrice = planPrice - (discount || 0);
-      dueAmount = finalPrice - (amountCollected || 0);
+      membershipEndDate = calculateEndDate(membershipStartDate, planDetails.durationInDays);
+
+      // Calculate pricing
+      const planPrice = planDetails.price;
+      const discountAmount = discount || 0;
+      finalPrice = planPrice - discountAmount;
+      const amountPaid = amountCollected || 0;
+      dueAmount = finalPrice - amountPaid;
     }
 
-    // Create member
-    const member = await Member.create({
+    // Create member object
+    const memberData = {
       gym: gymId,
+      memberId,
       name,
       phoneNumber,
       gender,
@@ -117,142 +194,165 @@ export async function POST(request) {
       membershipStartDate,
       membershipEndDate,
       membershipStatus: planId ? 'active' : 'active',
-      planPrice,
+      planPrice: planDetails ? planDetails.price : 0,
       discount: discount || 0,
       finalPrice,
       amountPaid: amountCollected || 0,
       dueAmount,
+      isActive: true,
+    };
+
+    // Create member
+    const member = await Member.create(memberData);
+
+// If plan is assigned, create transaction and membership history
+if (planId && amountCollected > 0) {
+  // Create transaction
+  await Transaction.create({
+    gym: gymId,
+    member: member._id,
+    plan: planId,
+    planName: planDetails.name,
+    transactionType: 'admission',
+    amount: amountCollected,
+    paymentMode: paymentMode || 'cash',
+    transactionDate: new Date(),
+    invoiceSent: sendInvoice || false,
+  });
+
+  // Create membership history - NOW WITH ALL REQUIRED FIELDS
+  await MembershipHistory.create({
+    gym: gymId,
+    member: member._id,
+    plan: planId,
+    planName: planDetails.name,          // ✅ ADDED
+    planPrice: planDetails.price,        // ✅ ADDED
+    startDate: membershipStartDate,
+    endDate: membershipEndDate,
+    renewalType: 'new',
+    amountPaid: amountCollected,
+    discount: discount || 0,
+    finalPrice: finalPrice,              // ✅ ADDED
+    paymentMode: paymentMode || 'cash',
+  });
+}
+
+    // Populate plan details before returning
+    const populatedMember = await Member.findById(member._id)
+      .populate('currentPlan', 'name price duration')
+      .lean();
+
+    return NextResponse.json({
+      success: true,
+      message: 'Member created successfully',
+      member: populatedMember,
     });
 
-    // Create transaction if payment was made
-    if (planId && amountCollected > 0) {
-      await Transaction.create({
-        gym: gymId,
-        member: member._id,
-        transactionType: 'admission',
-        amount: amountCollected,
-        paymentMode: paymentMode || 'cash',
-        plan: planId,
-        planName: plan.name,
-        planDuration: `${plan.duration.value} ${plan.duration.unit}`,
-        discount: discount || 0,
-        invoiceSent: sendInvoice || false,
-        processedBy: user._id,
-        transactionDate: new Date(),
-      });
-    }
-
-    // Create membership history
-    if (planId) {
-      await MembershipHistory.create({
-        gym: gymId,
-        member: member._id,
-        plan: planId,
-        planName: plan.name,
-        startDate: membershipStartDate,
-        endDate: membershipEndDate,
-        planPrice,
-        discount: discount || 0,
-        finalPrice,
-        amountPaid: amountCollected || 0,
-        dueAmount,
-        paymentMode: paymentMode || 'cash',
-        renewalType: 'new',
-        processedBy: user._id,
-      });
-    }
-
-    // Populate member data
-    const populatedMember = await Member.findById(member._id).populate('currentPlan');
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Member added successfully',
-        member: populatedMember,
-      },
-      { status: 201 }
-    );
   } catch (error) {
     console.error('Create member error:', error);
     return NextResponse.json(
-      { success: false, message: 'Server error occurred' },
+      { success: false, message: error.message || 'Server error' },
       { status: 500 }
     );
   }
 }
 
-export async function GET(request) {
+// PUT - Update member
+export async function PUT(req) {
   try {
-    await dbConnect();
-
-    const { authenticated, user, error } = await verifyAuth(request);
-    if (!authenticated) {
+    const authResult = await verifyAuth(req);
+    if (!authResult.authenticated) {
       return NextResponse.json(
-        { success: false, message: error || 'Unauthorized' },
+        { success: false, message: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    const { searchParams } = new URL(request.url);
-    const gymId = searchParams.get('gymId');
-    const status = searchParams.get('status'); // active, expired, all
-    const batch = searchParams.get('batch');
+    const body = await req.json();
+    const { memberId, ...updateData } = body;
 
-    if (!gymId) {
+    if (!memberId) {
       return NextResponse.json(
-        { success: false, message: 'Gym ID is required' },
+        { success: false, message: 'Member ID is required' },
         { status: 400 }
       );
     }
 
-    // Verify gym access
-    const gym = await Gym.findById(gymId);
-    if (!gym) {
+    await dbConnect();
+
+    const member = await Member.findByIdAndUpdate(
+      memberId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).populate('currentPlan', 'name price duration');
+
+    if (!member) {
       return NextResponse.json(
-        { success: false, message: 'Gym not found' },
+        { success: false, message: 'Member not found' },
         { status: 404 }
       );
     }
 
-    const hasAccess =
-      gym.owner.toString() === user._id.toString() ||
-      gym.managers.some((m) => m.toString() === user._id.toString());
+    return NextResponse.json({
+      success: true,
+      message: 'Member updated successfully',
+      member,
+    });
 
-    if (!hasAccess) {
+  } catch (error) {
+    console.error('Update member error:', error);
+    return NextResponse.json(
+      { success: false, message: 'Server error' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Soft delete member
+export async function DELETE(req) {
+  try {
+    const authResult = await verifyAuth(req);
+    if (!authResult.authenticated) {
       return NextResponse.json(
-        { success: false, message: 'Access denied' },
-        { status: 403 }
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
       );
     }
 
-    // Build query
-    const query = { gym: gymId, isActive: true };
+    const { searchParams } = new URL(req.url);
+    const memberId = searchParams.get('memberId');
 
-    if (status && status !== 'all') {
-      query.membershipStatus = status;
+    if (!memberId) {
+      return NextResponse.json(
+        { success: false, message: 'Member ID is required' },
+        { status: 400 }
+      );
     }
 
-    if (batch) {
-      query.batch = batch;
-    }
+    await dbConnect();
 
-    // Get members
-    const members = await Member.find(query)
-      .populate('currentPlan')
-      .sort({ createdAt: -1 });
-
-    return NextResponse.json(
-      {
-        success: true,
-        members,
-      },
-      { status: 200 }
+    const member = await Member.findByIdAndUpdate(
+      memberId,
+      { $set: { isActive: false } },
+      { new: true }
     );
+
+    if (!member) {
+      return NextResponse.json(
+        { success: false, message: 'Member not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Member deleted successfully',
+    });
+
   } catch (error) {
-    console.error('Get members error:', error);
+    console.error('Delete member error:', error);
     return NextResponse.json(
-      { success: false, message: 'Server error occurred' },
+      { success: false, message: 'Server error' },
       { status: 500 }
     );
   }
