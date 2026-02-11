@@ -9,35 +9,42 @@ const GymSchema = new mongoose.Schema(
     },
     location: {
       type: String,
-      required: [true, 'Gym location is required'],
+      required: [true, 'Location is required'],
       trim: true,
     },
-    // Owner of this gym
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
-    // Managers assigned to this gym
-    managers: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-      },
-    ],
-    // Additional gym settings
-    settings: {
-      currency: {
+    // Subscription details
+    subscription: {
+      plan: {
         type: String,
-        default: '₹',
+        enum: ['trial', 'basic', 'pro', 'premium'],
+        default: 'trial',
       },
-      timezone: {
+      status: {
         type: String,
-        default: 'Asia/Kolkata',
+        enum: ['active', 'expired', 'cancelled', 'trial'],
+        default: 'trial',
       },
-      language: {
-        type: String,
-        default: 'en',
+      startDate: {
+        type: Date,
+        default: Date.now,
+      },
+      endDate: {
+        type: Date,
+        default: function() {
+          // 7 days trial by default
+          const date = new Date();
+          date.setDate(date.getDate() + 7);
+          return date;
+        },
+      },
+      trialUsed: {
+        type: Boolean,
+        default: false,
       },
     },
     isActive: {
@@ -50,8 +57,8 @@ const GymSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for performance
+// Indexes
 GymSchema.index({ owner: 1 });
-GymSchema.index({ managers: 1 });
+GymSchema.index({ 'subscription.status': 1, 'subscription.endDate': 1 });
 
 export default mongoose.models.Gym || mongoose.model('Gym', GymSchema);

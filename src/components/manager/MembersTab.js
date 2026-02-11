@@ -3,45 +3,62 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
-import AddMemberModal from './AddMemberModal'
 import MemberDetailModal from './MemberDetailModal'
 
-export default function MembersTab() {
+export default function MemberTab() {
   const { selectedGym } = useAuth()
   const [members, setMembers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [filteredMembers, setFilteredMembers] = useState([])
+  const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState('all')
-  const [showAddModal, setShowAddModal] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
-    fetchMembers()
+    if (selectedGym) {
+      fetchMembers()
+    }
   }, [selectedGym, filter])
+
+  useEffect(() => {
+    // Filter members based on search query
+    if (searchQuery.trim() === '') {
+      setFilteredMembers(members)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = members.filter(member => 
+        member.name.toLowerCase().includes(query) ||
+        member.memberId.toLowerCase().includes(query) ||
+        member.phoneNumber.includes(query)
+      )
+      setFilteredMembers(filtered)
+    }
+  }, [searchQuery, members])
 
   const fetchMembers = async () => {
     try {
       setLoading(true)
       const token = localStorage.getItem('token')
-      const gymId = selectedGym.id || selectedGym._id
-      
-      let url = `/api/member?gymId=${gymId}`
-      if (filter !== 'all') {
-        url += `&status=${filter}`
-      }
-
-      const res = await fetch(url, {
+      const statusParam = filter !== 'all' ? `&status=${filter}` : ''
+      const res = await fetch(`/api/member?gymId=${selectedGym.id || selectedGym._id}${statusParam}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       })
       const data = await res.json()
-      
       if (data.success) {
         setMembers(data.members)
+        setFilteredMembers(data.members)
       }
     } catch (error) {
       console.error('Error fetching members:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleMemberClick = (member) => {
+    setSelectedMember(member)
+    setShowDetailModal(true)
   }
 
   const calculateDaysLeft = (endDate) => {
@@ -53,160 +70,197 @@ export default function MembersTab() {
     return diffDays
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    )
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
+      className="pb-20"
     >
-      {/* Filter and Search Bar */}
-      <div className="bg-white rounded-xl p-4 mb-4 shadow-sm">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex-1 relative">
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg appearance-none bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            >
-              <option value="all">All Members</option>
-              <option value="active">Active</option>
-              <option value="expired">Expired</option>
-            </select>
-            <svg className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-            <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg>
-          </button>
-
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-            <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      {/* Search Bar */}
+      <div className="mb-4 relative">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by name, ID, or phone..."
+          className="w-full px-4 py-3 pl-11 pr-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm sm:text-base"
+        />
+        <svg 
+          className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" 
+          fill="none" 
+          stroke="currentColor" 
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition"
+          >
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-        </div>
+        )}
       </div>
 
-      {/* Members List */}
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      {/* Filter Tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide pb-2">
+        <button
+          onClick={() => setFilter('all')}
+          className={`px-4 sm:px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition ${
+            filter === 'all'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          All Members
+        </button>
+        <button
+          onClick={() => setFilter('active')}
+          className={`px-4 sm:px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition ${
+            filter === 'active'
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Active
+        </button>
+        <button
+          onClick={() => setFilter('expired')}
+          className={`px-4 sm:px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition ${
+            filter === 'expired'
+              ? 'bg-red-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Expired
+        </button>
+      </div>
+
+      {/* Search Results Count */}
+      {searchQuery && (
+        <div className="mb-3 text-sm text-gray-600">
+          Found {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''}
         </div>
-      ) : members.length === 0 ? (
-        <div className="text-center py-20">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-          <p className="text-gray-500 mb-4">No members found</p>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            Add First Member
-          </button>
+      )}
+
+      {/* Member Cards */}
+      {filteredMembers.length > 0 ? (
+        <div className="space-y-3">
+          <AnimatePresence mode="popLayout">
+            {filteredMembers.map((member) => {
+              const daysLeft = calculateDaysLeft(member.membershipEndDate)
+              
+              return (
+                <motion.div
+                  key={member._id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  onClick={() => handleMemberClick(member)}
+                  className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition cursor-pointer border-l-4 border-blue-500"
+                >
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    {/* Avatar */}
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                      {member.name.charAt(0).toUpperCase()}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-gray-900 text-base truncate">
+                        {member.name}
+                      </h3>
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+                          </svg>
+                          {member.memberId}
+                        </span>
+                      </div>
+                      <div className={`text-sm font-semibold mt-1 ${
+                        daysLeft < 0 ? 'text-red-600' : 
+                        daysLeft === 0 ? 'text-orange-600' : 
+                        daysLeft <= 7 ? 'text-yellow-600' : 
+                        'text-green-600'
+                      }`}>
+                        {daysLeft < 0 ? 'Expired' : daysLeft === 0 ? 'Expires today' : `${daysLeft} days left`}
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // Quick message action
+                          window.open(`https://wa.me/${member.phoneNumber}`, '_blank')
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition"
+                      >
+                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleMemberClick(member)
+                        }}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition"
+                      >
+                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
         </div>
       ) : (
-        <div className="space-y-3 pb-20">
-          {members.map((member) => {
-            const daysLeft = calculateDaysLeft(member.membershipEndDate)
-            
-            return (
-              <motion.div
-                key={member._id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                onClick={() => setSelectedMember(member)}
-                className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-blue-500 hover:shadow-md transition cursor-pointer"
-              >
-                <div className="flex items-center gap-4">
-                  {/* Avatar */}
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                    {member.name.charAt(0).toUpperCase()}
-                  </div>
-
-                  {/* Member Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">{member.name}</div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      </svg>
-                      <span>{member.memberId}</span>
-                    </div>
-                    {daysLeft !== null && (
-                      <div className={`text-sm font-medium ${
-                        daysLeft < 0 ? 'text-red-600' : daysLeft <= 7 ? 'text-orange-600' : 'text-green-600'
-                      }`}>
-                        {daysLeft < 0 ? 'Expired' : `${daysLeft} days left`}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </button>
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
+        <div className="bg-white rounded-2xl p-8 sm:p-12 text-center shadow-sm">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
+            {searchQuery ? 'No members found' : 'No Members Yet'}
+          </h3>
+          <p className="text-sm sm:text-base text-gray-600">
+            {searchQuery 
+              ? `No members match "${searchQuery}"`
+              : 'Add members to start managing your gym'
+            }
+          </p>
         </div>
       )}
 
-      {/* Floating Add Button */}
-      <button
-        onClick={() => setShowAddModal(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform z-30"
-      >
-        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
-
-      {/* Add Member Modal */}
-      <AddMemberModal
-        isOpen={showAddModal}
-        onClose={() => {
-          setShowAddModal(false)
-          fetchMembers()
-        }}
-      />
-
       {/* Member Detail Modal */}
-      {selectedMember && (
-        <MemberDetailModal
-          member={selectedMember}
-          onClose={() => setSelectedMember(null)}
-          onUpdate={fetchMembers}
-        />
-      )}
-
-      {/* Success Toast */}
-      <AnimatePresence>
-        {members.length > 0 && !loading && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-0 left-0 right-0 bg-blue-600 text-white py-3 px-4 text-center z-20"
-          >
-            {members.length} Member{members.length !== 1 ? 's' : ''} Added
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <MemberDetailModal
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false)
+          setSelectedMember(null)
+        }}
+        member={selectedMember}
+        onUpdate={fetchMembers}
+      />
     </motion.div>
   )
 }

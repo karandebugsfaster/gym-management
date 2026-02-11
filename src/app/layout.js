@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import {AuthProvider} from "@/context/AuthContext";
 import "./globals.css";
+// In src/app/layout.js, add to <head>:
+<script src="https://checkout.razorpay.com/v1/checkout.js" />
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

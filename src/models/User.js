@@ -13,57 +13,58 @@ const UserSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email'],
     },
     password: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: [6, 'Password must be at least 6 characters'],
+      minlength: 6,
     },
     dialCode: {
       type: String,
-      required: [true, 'Dial code is required'],
-      default: '91', // India default
+      default: '91',
     },
     phoneNumber: {
       type: String,
       required: [true, 'Phone number is required'],
-      trim: true,
     },
     role: {
       type: String,
       enum: ['owner', 'manager'],
       default: 'owner',
     },
-    // Gyms owned by this user (only for owners)
+    // For owners
     ownedGyms: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Gym',
       },
     ],
-    // Gyms managed by this user (only for managers)
+    // For managers
     managedGyms: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Gym',
       },
     ],
+    // Manager-specific fields
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: true,
     },
-    lastLogin: {
-      type: Date,
-    },
   },
   {
-    timestamps: true, // createdAt, updatedAt
+    timestamps: true,
   }
 );
 
-// Indexes for performance
+// Indexes
 UserSchema.index({ email: 1 });
-UserSchema.index({ phoneNumber: 1, dialCode: 1 });
+UserSchema.index({ role: 1 });
+UserSchema.index({ assignedBy: 1 });
 
 export default mongoose.models.User || mongoose.model('User', UserSchema);
